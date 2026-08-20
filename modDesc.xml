@@ -4,7 +4,7 @@
          xsi:noNamespaceSchemaLocation="https://validation.gdn.giants-software.com/xml/fs25/modDesc.xsd">
 
     <author>Robert Drygas / ChatGPT</author>
-    <version>1.1.0.0</version>
+    <version>1.2.0.0</version>
 
     <title>
         <en>Loose Cargo</en>
@@ -17,12 +17,16 @@ Uncovered bulk cargo can be lost from trailers, semi-trailers and auger wagons d
 
 Cargo loss starts above 25 km/h and increases with speed. Lighter materials are lost faster, while the effect decreases as the trailer becomes less full. Closing the cover stops the loss completely.
 
+When cargo loss starts, the player receives a warning on the HUD.
+
 The mod affects only vehicles controlled by the player. AI workers do not lose cargo.
         ]]></en>
         <pl><![CDATA[
 Nieprzykryty ładunek sypki może być gubiony z przyczep, naczep i wozów przeładunkowych podczas szybkiej jazdy.
 
 Ubytek zaczyna się powyżej 25 km/h i rośnie wraz z prędkością. Lżejsze materiały są tracone szybciej, a efekt słabnie wraz ze zmniejszaniem poziomu napełnienia. Zamknięcie pokrywy całkowicie zatrzymuje gubienie ładunku.
+
+Gdy rozpoczyna się utrata ładunku, gracz otrzymuje ostrzeżenie na HUD.
 
 Mod działa wyłącznie dla pojazdów kierowanych przez gracza. Pracownicy AI nie gubią ładunku.
         ]]></pl>
@@ -31,6 +35,13 @@ Mod działa wyłącznie dla pojazdów kierowanych przez gracza. Pracownicy AI ni
     <multiplayer supported="false"/>
 
     <iconFilename>mod_icon.dds</iconFilename>
+
+    <l10n>
+        <text name="FS25_LooseCargo_warningCargoLoss">
+            <en>Warning! You are driving too fast and losing cargo!</en>
+            <pl>Uwaga! Jedziesz za szybko i tracisz ładunek!</pl>
+        </text>
+    </l10n>
 
     <specializations>
         <specialization name="looseCargo"
