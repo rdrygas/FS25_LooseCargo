@@ -1,7 +1,14 @@
 --[[
 FS25_LooseCargo
+Version 1.0.2.0
 
-High-speed bulk cargo loss for uncovered trailers / auger wagons.
+High-speed bulk cargo loss for uncovered:
+  - trailers
+  - semi-trailers
+  - auger wagons
+
+The specialization itself is installed on FillUnit vehicle types.
+Concrete vehicles are filtered by their store category on load.
 ]]
 
 FS25LooseCargo = {}
@@ -10,39 +17,33 @@ FS25LooseCargo = {}
 -- TUNING
 -- -------------------------------------------------------------------------
 
--- No cargo loss at or below this speed.
 FS25LooseCargo.MIN_SPEED_KMH = 25.0
-
--- At this speed wheat loses BASE_LOSS_PER_MINUTE of the CURRENT load
--- during one minute of continuous driving with an uncovered cargo area.
 FS25LooseCargo.REFERENCE_SPEED_KMH = 50.0
-
--- 0.01 = 1% of current load per minute at REFERENCE_SPEED_KMH for wheat.
 FS25LooseCargo.BASE_LOSS_PER_MINUTE = 0.01
-
--- Safety cap: maximum fraction of current load that may be lost per minute.
--- 0.12 = 12% per minute.
 FS25LooseCargo.MAX_LOSS_PER_MINUTE = 0.12
 
--- Density modifier limits. A very light custom fillType will therefore not
--- produce absurdly high loss rates.
 FS25LooseCargo.MIN_DENSITY_FACTOR = 0.50
 FS25LooseCargo.MAX_DENSITY_FACTOR = 2.50
 
--- Cargo loss is calculated once per second instead of every frame.
 FS25LooseCargo.UPDATE_INTERVAL_MS = 1000
+
+-- Store categories accepted by the mod.
+-- StoreManager stores category names in upper case.
+FS25LooseCargo.ALLOWED_CATEGORIES = {
+    TRAILERS = true,
+    TRAILERSSEMI = true,
+    AUGERWAGONS = true
+}
+
+FS25LooseCargo.SPEC_NAME =
+    string.format("spec_%s.looseCargo", g_currentModName or "FS25_LooseCargo")
 
 -- -------------------------------------------------------------------------
 -- SPECIALIZATION
 -- -------------------------------------------------------------------------
 
 function FS25LooseCargo.prerequisitesPresent(specializations)
-    local hasFillUnit = SpecializationUtil.hasSpecialization(FillUnit, specializations)
-    local hasTrailer = SpecializationUtil.hasSpecialization(Trailer, specializations)
-    local hasPipe = SpecializationUtil.hasSpecialization(Pipe, specializations)
-    local hasAttachable = SpecializationUtil.hasSpecialization(Attachable, specializations)
-
-    return hasFillUnit and (hasTrailer or (hasPipe and hasAttachable))
+    return SpecializationUtil.hasSpecialization(FillUnit, specializations)
 end
 
 function FS25LooseCargo.registerEventListeners(vehicleType)
@@ -50,24 +51,73 @@ function FS25LooseCargo.registerEventListeners(vehicleType)
     SpecializationUtil.registerEventListener(vehicleType, "onUpdateTick", FS25LooseCargo)
 end
 
-FS25LooseCargo.SPEC_NAME =
-    string.format("spec_%s.looseCargo", g_currentModName or "FS25_LooseCargo")
+local function joinCategoryNames(categoryNames)
+    if categoryNames == nil or #categoryNames == 0 then
+        return "<none>"
+    end
+
+    return table.concat(categoryNames, ",")
+end
+
+function FS25LooseCargo:isEligibleCargoVehicle()
+    local storeItem = nil
+
+    if g_storeManager ~= nil and self.configFileName ~= nil then
+        storeItem = g_storeManager:getItemByXMLFilename(self.configFileName)
+    end
+
+    if storeItem == nil then
+        return false, nil, nil
+    end
+
+    local categoryNames = storeItem.categoryNames or {}
+
+    for _, categoryName in ipairs(categoryNames) do
+        if FS25LooseCargo.ALLOWED_CATEGORIES[string.upper(categoryName)] then
+            return true, storeItem, categoryNames
+        end
+    end
+
+    return false, storeItem, categoryNames
+end
 
 function FS25LooseCargo:onLoad(savegame)
     local spec = self[FS25LooseCargo.SPEC_NAME]
-    if spec ~= nil then
-        spec.timer = 0
+    if spec == nil then
+        return
     end
+
+    spec.timer = 0
+
+    local eligible, storeItem, categoryNames =
+        FS25LooseCargo.isEligibleCargoVehicle(self)
+
+    spec.isEligible = eligible
+
+    -- Useful diagnostic while the mod is being tested. It is printed once
+    -- for every loaded FillUnit vehicle, not every frame.
+    local vehicleName = "<unknown>"
+    if storeItem ~= nil and storeItem.name ~= nil then
+        vehicleName = storeItem.name
+    elseif self.getName ~= nil then
+        vehicleName = self:getName()
+    end
+
+    Logging.info(
+        "[FS25_LooseCargo] Vehicle='%s', categories='%s', eligible=%s",
+        tostring(vehicleName),
+        joinCategoryNames(categoryNames),
+        tostring(eligible)
+    )
 end
 
--- Returns true if the cargo in this fill unit is exposed to the air.
---
--- Cover specialization convention in FS25:
---   state == 0          -> all covers closed
---   state == cover.index -> that cover is open
---
--- A vehicle without a cover, or a fill unit that has no assigned cover,
--- is treated as uncovered.
+-- -------------------------------------------------------------------------
+-- COVER
+-- -------------------------------------------------------------------------
+
+-- A vehicle with no cover assigned to this fill unit is considered exposed.
+-- Cover state 0 means all covers are closed. A state equal to cover.index
+-- means that particular cover is open.
 function FS25LooseCargo.isFillUnitExposed(vehicle, fillUnitIndex)
     local coverSpec = vehicle.spec_cover
 
@@ -75,7 +125,8 @@ function FS25LooseCargo.isFillUnitExposed(vehicle, fillUnitIndex)
         return true
     end
 
-    local fillUnitCovers = coverSpec.fillUnitIndexToCovers
+    local fillUnitCovers =
+        coverSpec.fillUnitIndexToCovers
         and coverSpec.fillUnitIndexToCovers[fillUnitIndex]
 
     if fillUnitCovers == nil or #fillUnitCovers == 0 then
@@ -91,9 +142,10 @@ function FS25LooseCargo.isFillUnitExposed(vehicle, fillUnitIndex)
     return false
 end
 
--- Only real bulk materials are handled.
--- This automatically follows base-game and mod/map fillTypes that correctly
--- mark themselves as bulk, rather than relying on a hard-coded list.
+-- -------------------------------------------------------------------------
+-- FILL TYPES / DENSITY
+-- -------------------------------------------------------------------------
+
 function FS25LooseCargo.isBulkFillType(fillTypeIndex)
     if fillTypeIndex == nil or fillTypeIndex == FillType.UNKNOWN then
         return false
@@ -109,21 +161,12 @@ function FS25LooseCargo.isBulkFillType(fillTypeIndex)
        and desc.isBaleType ~= true
 end
 
--- Lighter cargo is lost faster.
---
--- We normalize density against wheat, so the calculation does not depend on
--- the absolute internal mass unit. sqrt() keeps differences noticeable but
--- not excessively strong:
---
---     factor = sqrt(wheatDensity / cargoDensity)
---
--- Examples:
---   same density as wheat -> 1.0
---   4x lighter            -> 2.0
---   4x heavier            -> 0.5
 function FS25LooseCargo.getDensityFactor(fillTypeIndex)
     local desc = g_fillTypeManager:getFillTypeByIndex(fillTypeIndex)
-    if desc == nil or desc.massPerLiter == nil or desc.massPerLiter <= 0 then
+
+    if desc == nil
+        or desc.massPerLiter == nil
+        or desc.massPerLiter <= 0 then
         return 1.0
     end
 
@@ -131,7 +174,10 @@ function FS25LooseCargo.getDensityFactor(fillTypeIndex)
 
     if FillType.WHEAT ~= nil then
         local wheatDesc = g_fillTypeManager:getFillTypeByIndex(FillType.WHEAT)
-        if wheatDesc ~= nil and wheatDesc.massPerLiter ~= nil and wheatDesc.massPerLiter > 0 then
+
+        if wheatDesc ~= nil
+            and wheatDesc.massPerLiter ~= nil
+            and wheatDesc.massPerLiter > 0 then
             referenceMass = wheatDesc.massPerLiter
         end
     end
@@ -144,40 +190,47 @@ function FS25LooseCargo.getDensityFactor(fillTypeIndex)
     )
 end
 
--- Returns the fraction of the current load lost per minute.
 function FS25LooseCargo.getLossRatePerMinute(speedKmh, densityFactor)
     if speedKmh <= FS25LooseCargo.MIN_SPEED_KMH then
         return 0
     end
 
-    local speedRange = FS25LooseCargo.REFERENCE_SPEED_KMH
-                     - FS25LooseCargo.MIN_SPEED_KMH
+    local speedRange =
+        FS25LooseCargo.REFERENCE_SPEED_KMH
+        - FS25LooseCargo.MIN_SPEED_KMH
 
     if speedRange <= 0 then
         return 0
     end
 
-    local speedFactor = (speedKmh - FS25LooseCargo.MIN_SPEED_KMH) / speedRange
+    local speedFactor =
+        (speedKmh - FS25LooseCargo.MIN_SPEED_KMH) / speedRange
 
-    -- Quadratic curve:
-    -- 25 km/h -> 0
-    -- 50 km/h -> 1.00 x base rate
-    -- 75 km/h -> 4.00 x base rate
-    local lossRate = FS25LooseCargo.BASE_LOSS_PER_MINUTE
-                   * speedFactor * speedFactor
-                   * densityFactor
+    local lossRate =
+        FS25LooseCargo.BASE_LOSS_PER_MINUTE
+        * speedFactor * speedFactor
+        * densityFactor
 
     return math.min(FS25LooseCargo.MAX_LOSS_PER_MINUTE, lossRate)
 end
 
-function FS25LooseCargo:onUpdateTick(dt, isActiveForInput, isActiveForInputIgnoreSelection, isSelected)
-    -- Fill-level changes must be performed by the server side of the vehicle.
-    if not self.isServer then
+-- -------------------------------------------------------------------------
+-- UPDATE
+-- -------------------------------------------------------------------------
+
+function FS25LooseCargo:onUpdateTick(
+    dt,
+    isActiveForInput,
+    isActiveForInputIgnoreSelection,
+    isSelected
+)
+    local modSpec = self[FS25LooseCargo.SPEC_NAME]
+
+    if modSpec == nil or not modSpec.isEligible then
         return
     end
 
-    local modSpec = self[FS25LooseCargo.SPEC_NAME]
-    if modSpec == nil then
+    if not self.isServer then
         return
     end
 
@@ -195,35 +248,40 @@ function FS25LooseCargo:onUpdateTick(dt, isActiveForInput, isActiveForInputIgnor
         return
     end
 
-    -- Player-controlled vehicles only.
-    if rootVehicle.getIsControlled == nil or not rootVehicle:getIsControlled() then
+    -- Player-controlled vehicle only.
+    if rootVehicle.getIsControlled == nil
+        or not rootVehicle:getIsControlled() then
         return
     end
 
-    -- Explicitly exclude hired workers / AI jobs.
-    if rootVehicle.getIsAIActive ~= nil and rootVehicle:getIsAIActive() then
+    -- Hired worker / AI excluded explicitly.
+    if rootVehicle.getIsAIActive ~= nil
+        and rootVehicle:getIsAIActive() then
         return
     end
 
-    local speedKmh
+    local speedKmh = nil
+
     if rootVehicle.getLastSpeed ~= nil then
         speedKmh = rootVehicle:getLastSpeed()
     elseif self.getLastSpeed ~= nil then
         speedKmh = self:getLastSpeed()
-    else
+    end
+
+    if speedKmh == nil then
         return
     end
 
-    speedKmh = math.abs(speedKmh or 0)
+    speedKmh = math.abs(speedKmh)
 
     if speedKmh <= FS25LooseCargo.MIN_SPEED_KMH then
         return
     end
 
-    -- Do not add our artificial loss while the trailer is deliberately
-    -- discharging through its normal discharge system.
+    -- Do not add artificial cargo loss during intentional unloading.
     if self.getDischargeState ~= nil
-       and self:getDischargeState() ~= Dischargeable.DISCHARGE_STATE_OFF then
+        and Dischargeable ~= nil
+        and self:getDischargeState() ~= Dischargeable.DISCHARGE_STATE_OFF then
         return
     end
 
@@ -236,18 +294,29 @@ function FS25LooseCargo:onUpdateTick(dt, isActiveForInput, isActiveForInputIgnor
         local fillLevel = self:getFillUnitFillLevel(fillUnitIndex)
 
         if fillLevel ~= nil and fillLevel > 0.01 then
-            local fillTypeIndex = self:getFillUnitFillType(fillUnitIndex)
+            local fillTypeIndex =
+                self:getFillUnitFillType(fillUnitIndex)
 
             if FS25LooseCargo.isBulkFillType(fillTypeIndex)
-               and FS25LooseCargo.isFillUnitExposed(self, fillUnitIndex) then
+                and FS25LooseCargo.isFillUnitExposed(
+                    self,
+                    fillUnitIndex
+                ) then
 
-                local densityFactor = FS25LooseCargo.getDensityFactor(fillTypeIndex)
+                local densityFactor =
+                    FS25LooseCargo.getDensityFactor(fillTypeIndex)
+
                 local lossRatePerMinute =
-                    FS25LooseCargo.getLossRatePerMinute(speedKmh, densityFactor)
+                    FS25LooseCargo.getLossRatePerMinute(
+                        speedKmh,
+                        densityFactor
+                    )
 
                 if lossRatePerMinute > 0 then
                     local lossLiters =
-                        fillLevel * lossRatePerMinute * (elapsedMs / 60000.0)
+                        fillLevel
+                        * lossRatePerMinute
+                        * (elapsedMs / 60000.0)
 
                     lossLiters = math.min(lossLiters, fillLevel)
 
