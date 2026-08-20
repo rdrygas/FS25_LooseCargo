@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8" standalone="no" ?>
+<modDesc descVersion="92">
+    <author>Robert Drygas / ChatGPT</author>
+    <version>1.0.0.0</version>
+
+    <title>
+        <en>Loose Cargo</en>
+        <pl>Gubienie ładunku</pl>
+    </title>
+
+    <description>
+        <en><![CDATA[
+Bulk cargo can be lost from uncovered trailers and auger wagons at high speed.
+The faster the vehicle moves, the greater the loss. Lighter materials are lost faster.
+Only player-controlled vehicles are affected.
+        ]]></en>
+        <pl><![CDATA[
+Ładunki sypkie mogą być gubione z odkrytych przyczep i wozów przeładunkowych przy dużej prędkości.
+Im większa prędkość, tym większy ubytek. Lżejsze materiały są tracone szybciej.
+Mod działa wyłącznie dla pojazdów kierowanych przez gracza.
+        ]]></pl>
+    </description>
+
+    <multiplayer supported="false" />
+
+    <iconFilename>mod_icon.dds</iconFilename>
+
+    <extraSourceFiles>
+        <sourceFile filename="scripts/LooseCargoRegister.lua" />
+    </extraSourceFiles>
+</modDesc>
