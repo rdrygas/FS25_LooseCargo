@@ -1,6 +1,6 @@
 --[[
 FS25_LooseCargo
-Version 1.0.3.0
+Version 1.0.4.0
 
 High-speed bulk cargo loss for uncovered:
   - trailers
@@ -161,21 +161,16 @@ function FS25LooseCargo.isLooseCargoFillType(fillTypeIndex)
         return false
     end
 
-    -- Pallets and bales are not loose cargo even if a custom map/mod assigns
-    -- unusual category data to them.
-    if desc.isPalletType == true or desc.isBaleType == true then
-        return false
-    end
-
-    -- BULK is the actual fillType category used by fill units that accept
-    -- loose solid cargo. This is broader and more appropriate than the
-    -- FillTypeDesc.isBulkType flag, which is an independent XML property and
-    -- defaults to false.
+    -- The concrete vehicle is already restricted to
+    -- TRAILERS / TRAILERSSEMI / AUGERWAGONS.
+    --
+    -- Do NOT reject a fillType because isPalletType or isBaleType is set.
+    -- Those flags describe capabilities/properties of the fill type, not the
+    -- physical form of the material currently stored in this trailer.
     local isInBulkCategory =
         g_fillTypeManager:getIsFillTypeInCategory(fillTypeIndex, "BULK")
 
-    -- Keep isBulkType as a fallback for custom fillTypes that are explicitly
-    -- marked as bulk but were not assigned to the standard BULK category.
+    -- Compatibility fallback for custom fillTypes explicitly marked as bulk.
     return isInBulkCategory or desc.isBulkType == true
 end
 
@@ -201,10 +196,12 @@ function FS25LooseCargo.logFillTypeOnce(fillTypeIndex)
         g_fillTypeManager:getIsFillTypeInCategory(fillTypeIndex, "BULK")
 
     Logging.info(
-        "[FS25_LooseCargo] Cargo='%s', BULK=%s, isBulkType=%s, massPerLiter=%.6f",
+        "[FS25_LooseCargo] Cargo='%s', BULK=%s, isBulkType=%s, isPalletType=%s, isBaleType=%s, massPerLiter=%.6f",
         tostring(name),
         tostring(inBulk),
         tostring(desc.isBulkType == true),
+        tostring(desc.isPalletType == true),
+        tostring(desc.isBaleType == true),
         tonumber(desc.massPerLiter) or 0
     )
 end
