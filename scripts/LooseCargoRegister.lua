@@ -12,7 +12,7 @@ FS25LooseCargoRegister.MOD_NAME = g_currentModName
 FS25LooseCargoRegister.MOD_DIR = g_currentModDirectory
 FS25LooseCargoRegister.SPEC_NAME = FS25LooseCargoRegister.MOD_NAME .. ".looseCargo"
 
-local specializationFilename = Utils.getFilename("LooseCargo.lua", FS25LooseCargoRegister.MOD_DIR)
+local specializationFilename = Utils.getFilename("scripts/LooseCargo.lua", FS25LooseCargoRegister.MOD_DIR)
 
 g_specializationManager:addSpecialization(
     FS25LooseCargoRegister.SPEC_NAME,
