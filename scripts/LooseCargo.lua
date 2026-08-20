@@ -1,6 +1,6 @@
 --[[
 FS25_LooseCargo
-Version 1.0.5.0
+Version 1.1.0.0
 
 High-speed bulk cargo loss for uncovered:
   - trailers
@@ -13,26 +13,16 @@ Concrete vehicles are filtered by their store category on load.
 
 FS25LooseCargo = {}
 
--- -------------------------------------------------------------------------
--- TUNING
--- -------------------------------------------------------------------------
-
+-- Configuration
 FS25LooseCargo.MIN_SPEED_KMH = 25.0
 FS25LooseCargo.REFERENCE_SPEED_KMH = 50.0
 FS25LooseCargo.BASE_LOSS_PER_MINUTE = 0.01
 FS25LooseCargo.MAX_LOSS_PER_MINUTE = 0.12
-
--- Below this fill level the material is assumed to sit too deep inside
--- the body to be significantly exposed to airflow.
 FS25LooseCargo.MIN_EXPOSED_FILL_PERCENT = 0.25
-
 FS25LooseCargo.MIN_DENSITY_FACTOR = 0.50
 FS25LooseCargo.MAX_DENSITY_FACTOR = 2.50
-
 FS25LooseCargo.UPDATE_INTERVAL_MS = 1000
 
--- Store categories accepted by the mod.
--- StoreManager stores category names in upper case.
 FS25LooseCargo.ALLOWED_CATEGORIES = {
     TRAILERS = true,
     TRAILERSSEMI = true,
@@ -41,11 +31,6 @@ FS25LooseCargo.ALLOWED_CATEGORIES = {
 
 FS25LooseCargo.SPEC_NAME =
     string.format("spec_%s.looseCargo", g_currentModName or "FS25_LooseCargo")
-
-
--- -------------------------------------------------------------------------
--- SPECIALIZATION
--- -------------------------------------------------------------------------
 
 function FS25LooseCargo.prerequisitesPresent(specializations)
     return SpecializationUtil.hasSpecialization(FillUnit, specializations)
@@ -56,21 +41,17 @@ function FS25LooseCargo.registerEventListeners(vehicleType)
     SpecializationUtil.registerEventListener(vehicleType, "onUpdateTick", FS25LooseCargo)
 end
 
-
 function FS25LooseCargo:isEligibleCargoVehicle()
-    local storeItem = nil
-
-    if g_storeManager ~= nil and self.configFileName ~= nil then
-        storeItem = g_storeManager:getItemByXMLFilename(self.configFileName)
+    if g_storeManager == nil or self.configFileName == nil then
+        return false
     end
 
+    local storeItem = g_storeManager:getItemByXMLFilename(self.configFileName)
     if storeItem == nil then
         return false
     end
 
-    local categoryNames = storeItem.categoryNames or {}
-
-    for _, categoryName in ipairs(categoryNames) do
+    for _, categoryName in ipairs(storeItem.categoryNames or {}) do
         if FS25LooseCargo.ALLOWED_CATEGORIES[string.upper(categoryName)] then
             return true
         end
@@ -89,13 +70,6 @@ function FS25LooseCargo:onLoad(savegame)
     spec.isEligible = FS25LooseCargo.isEligibleCargoVehicle(self)
 end
 
--- -------------------------------------------------------------------------
--- COVER
--- -------------------------------------------------------------------------
-
--- A vehicle with no cover assigned to this fill unit is considered exposed.
--- Cover state 0 means all covers are closed. A state equal to cover.index
--- means that particular cover is open.
 function FS25LooseCargo.isFillUnitExposed(vehicle, fillUnitIndex)
     local coverSpec = vehicle.spec_cover
 
@@ -120,10 +94,6 @@ function FS25LooseCargo.isFillUnitExposed(vehicle, fillUnitIndex)
     return false
 end
 
--- -------------------------------------------------------------------------
--- FILL TYPES / DENSITY
--- -------------------------------------------------------------------------
-
 function FS25LooseCargo.isLooseCargoFillType(fillTypeIndex)
     if fillTypeIndex == nil or fillTypeIndex == FillType.UNKNOWN then
         return false
@@ -134,38 +104,28 @@ function FS25LooseCargo.isLooseCargoFillType(fillTypeIndex)
         return false
     end
 
-    -- The concrete vehicle is already restricted to
-    -- TRAILERS / TRAILERSSEMI / AUGERWAGONS.
-    --
-    -- Do NOT reject a fillType because isPalletType or isBaleType is set.
-    -- Those flags describe capabilities/properties of the fill type, not the
-    -- physical form of the material currently stored in this trailer.
-    local isInBulkCategory =
-        g_fillTypeManager:getIsFillTypeInCategory(fillTypeIndex, "BULK")
-
-    -- Compatibility fallback for custom fillTypes explicitly marked as bulk.
-    return isInBulkCategory or desc.isBulkType == true
+    return g_fillTypeManager:getIsFillTypeInCategory(fillTypeIndex, "BULK")
+        or desc.isBulkType == true
 end
 
 function FS25LooseCargo.getDensityFactor(fillTypeIndex)
     local desc = g_fillTypeManager:getFillTypeByIndex(fillTypeIndex)
 
-    if desc == nil
-        or desc.massPerLiter == nil
-        or desc.massPerLiter <= 0 then
+    if desc == nil or desc.massPerLiter == nil or desc.massPerLiter <= 0 then
         return 1.0
     end
 
     local referenceMass = desc.massPerLiter
+    local wheatDesc = nil
 
     if FillType.WHEAT ~= nil then
-        local wheatDesc = g_fillTypeManager:getFillTypeByIndex(FillType.WHEAT)
+        wheatDesc = g_fillTypeManager:getFillTypeByIndex(FillType.WHEAT)
+    end
 
-        if wheatDesc ~= nil
-            and wheatDesc.massPerLiter ~= nil
-            and wheatDesc.massPerLiter > 0 then
-            referenceMass = wheatDesc.massPerLiter
-        end
+    if wheatDesc ~= nil
+        and wheatDesc.massPerLiter ~= nil
+        and wheatDesc.massPerLiter > 0 then
+        referenceMass = wheatDesc.massPerLiter
     end
 
     local factor = math.sqrt(referenceMass / desc.massPerLiter)
@@ -187,11 +147,6 @@ function FS25LooseCargo.getExposureFactor(vehicle, fillUnitIndex)
         return 0.0
     end
 
-    -- Linear ramp:
-    -- 25% full -> 0% exposure
-    -- 50% full -> 33% exposure
-    -- 75% full -> 67% exposure
-    -- 100% full -> 100% exposure
     local range = 1.0 - FS25LooseCargo.MIN_EXPOSED_FILL_PERCENT
     local factor =
         (fillPct - FS25LooseCargo.MIN_EXPOSED_FILL_PERCENT) / range
@@ -223,49 +178,37 @@ function FS25LooseCargo.getLossRatePerMinute(speedKmh, densityFactor)
     return math.min(FS25LooseCargo.MAX_LOSS_PER_MINUTE, lossRate)
 end
 
--- -------------------------------------------------------------------------
--- UPDATE
--- -------------------------------------------------------------------------
-
 function FS25LooseCargo:onUpdateTick(
     dt,
     isActiveForInput,
     isActiveForInputIgnoreSelection,
     isSelected
 )
-    local modSpec = self[FS25LooseCargo.SPEC_NAME]
+    local spec = self[FS25LooseCargo.SPEC_NAME]
 
-    if modSpec == nil or not modSpec.isEligible then
+    if spec == nil or not spec.isEligible or not self.isServer then
         return
     end
 
-    if not self.isServer then
+    spec.timer = (spec.timer or 0) + dt
+
+    if spec.timer < FS25LooseCargo.UPDATE_INTERVAL_MS then
         return
     end
 
-    modSpec.timer = (modSpec.timer or 0) + dt
-
-    if modSpec.timer < FS25LooseCargo.UPDATE_INTERVAL_MS then
-        return
-    end
-
-    local elapsedMs = math.min(modSpec.timer, 5000)
-    modSpec.timer = 0
+    local elapsedMs = math.min(spec.timer, 5000)
+    spec.timer = 0
 
     local rootVehicle = self:getRootVehicle()
     if rootVehicle == nil then
         return
     end
 
-    -- Player-controlled vehicle only.
-    if rootVehicle.getIsControlled == nil
-        or not rootVehicle:getIsControlled() then
+    if rootVehicle.getIsControlled == nil or not rootVehicle:getIsControlled() then
         return
     end
 
-    -- Hired worker / AI excluded explicitly.
-    if rootVehicle.getIsAIActive ~= nil
-        and rootVehicle:getIsAIActive() then
+    if rootVehicle.getIsAIActive ~= nil and rootVehicle:getIsAIActive() then
         return
     end
 
@@ -287,7 +230,6 @@ function FS25LooseCargo:onUpdateTick(
         return
     end
 
-    -- Do not add artificial cargo loss during intentional unloading.
     if self.getDischargeState ~= nil
         and Dischargeable ~= nil
         and self:getDischargeState() ~= Dischargeable.DISCHARGE_STATE_OFF then
@@ -303,23 +245,15 @@ function FS25LooseCargo:onUpdateTick(
         local fillLevel = self:getFillUnitFillLevel(fillUnitIndex)
 
         if fillLevel ~= nil and fillLevel > 0.01 then
-            local fillTypeIndex =
-                self:getFillUnitFillType(fillUnitIndex)
+            local fillTypeIndex = self:getFillUnitFillType(fillUnitIndex)
 
             if FS25LooseCargo.isLooseCargoFillType(fillTypeIndex)
-                and FS25LooseCargo.isFillUnitExposed(
-                    self,
-                    fillUnitIndex
-                ) then
-
+                and FS25LooseCargo.isFillUnitExposed(self, fillUnitIndex) then
                 local densityFactor =
                     FS25LooseCargo.getDensityFactor(fillTypeIndex)
 
                 local exposureFactor =
-                    FS25LooseCargo.getExposureFactor(
-                        self,
-                        fillUnitIndex
-                    )
+                    FS25LooseCargo.getExposureFactor(self, fillUnitIndex)
 
                 local lossRatePerMinute =
                     FS25LooseCargo.getLossRatePerMinute(
