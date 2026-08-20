@@ -20,7 +20,8 @@ Mod został zaprojektowany według następujących zasad:
 - przy napełnieniu równym 25% lub mniejszym materiał nie jest już tracony;
 - mod działa tylko dla pojazdów kierowanych przez gracza;
 - pracownik AI nie powoduje strat; przejęcie pojazdu przez gracza ponownie uruchamia mechanizm;
-- podczas normalnego rozładunku nie jest naliczana dodatkowa strata.
+- podczas normalnego rozładunku nie jest naliczana dodatkowa strata;
+- w chwili rozpoczęcia utraty ładunku gracz otrzymuje lokalizowane ostrzeżenie na HUD.
 
 ## Sposób działania
 
@@ -86,6 +87,27 @@ Jeżeli dany `fillUnit` posiada przypisaną pokrywę, mod sprawdza jej stan. Zam
 
 Jeżeli pojazd nie ma pokrywy, ładunek jest traktowany jako odkryty.
 
+### Ostrzeżenie HUD
+
+Gdy mod wykryje faktyczny ubytek ładunku, wyświetla krótkie migające ostrzeżenie:
+
+> **Uwaga! Jedziesz za szybko i tracisz ładunek!**
+
+W wersji angielskiej:
+
+> **Warning! You are driving too fast and losing cargo!**
+
+Komunikat jest wyświetlany tylko przy rozpoczęciu utraty ładunku, a nie przy każdym kolejnym obliczeniu. Po zatrzymaniu strat — np. przez zwolnienie, zamknięcie pokrywy albo spadek napełnienia do 25% — kolejne rozpoczęcie strat może ponownie wyświetlić ostrzeżenie.
+
+Tekst znajduje się w sekcji `l10n` pliku `modDesc.xml`, dzięki czemu można łatwo dodać kolejne wersje językowe.
+
+Czas wyświetlania i minimalny odstęp pomiędzy ostrzeżeniami można zmienić w `LooseCargo.lua`:
+
+```lua
+FS25LooseCargo.WARNING_DURATION_MS = 3000
+FS25LooseCargo.WARNING_COOLDOWN_MS = 5000
+```
+
 ## Tabela działania
 
 Poniższe wartości przedstawiają orientacyjną stratę **aktualnego ładunku na minutę** dla materiału o gęstości zbliżonej do pszenicy, przy odkrytej i całkowicie wypełnionej przyczepie.
@@ -133,6 +155,8 @@ FS25LooseCargo.MIN_EXPOSED_FILL_PERCENT = 0.25
 FS25LooseCargo.MIN_DENSITY_FACTOR = 0.50
 FS25LooseCargo.MAX_DENSITY_FACTOR = 2.50
 FS25LooseCargo.UPDATE_INTERVAL_MS = 1000
+FS25LooseCargo.WARNING_DURATION_MS = 3000
+FS25LooseCargo.WARNING_COOLDOWN_MS = 5000
 ```
 
 Znaczenie parametrów:
@@ -143,7 +167,9 @@ Znaczenie parametrów:
 - `MAX_LOSS_PER_MINUTE` — ograniczenie maksymalnej intensywności strat;
 - `MIN_EXPOSED_FILL_PERCENT` — poziom napełnienia, poniżej którego straty nie występują;
 - `MIN_DENSITY_FACTOR` / `MAX_DENSITY_FACTOR` — ograniczenia wpływu gęstości materiału;
-- `UPDATE_INTERVAL_MS` — odstęp pomiędzy obliczeniami strat.
+- `UPDATE_INTERVAL_MS` — odstęp pomiędzy obliczeniami strat;
+- `WARNING_DURATION_MS` — czas wyświetlania ostrzeżenia HUD;
+- `WARNING_COOLDOWN_MS` — minimalny odstęp pomiędzy ostrzeżeniami pochodzącymi z tego samego zestawu pojazdów.
 
 Zmiana `BASE_LOSS_PER_MINUTE` z `0.01` na `0.02` podwoi bazową intensywność strat. Wartość `0.005` zmniejszy ją o połowę.
 
@@ -170,6 +196,13 @@ Podczas testów potwierdzono poprawne działanie zwykłych przyczep, naczep oraz
 Mod jest przeznaczony do gry jednoosobowej.
 
 ## Historia zmian
+
+### 1.2.0.0
+
+- dodano lokalizowane ostrzeżenie HUD wyświetlane przy rozpoczęciu utraty ładunku;
+- dodano polską i angielską wersję komunikatu w `modDesc.xml`;
+- ostrzeżenie nie jest powtarzane podczas ciągłej utraty ładunku;
+- dodano konfigurowalny czas wyświetlania i zabezpieczenie przed duplikowaniem komunikatów dla zestawów z więcej niż jedną przyczepą.
 
 ### 1.1.0.0
 
