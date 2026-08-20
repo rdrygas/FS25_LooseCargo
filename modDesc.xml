@@ -1,7 +1,10 @@
-<?xml version="1.0" encoding="utf-8" standalone="no" ?>
-<modDesc descVersion="92">
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<modDesc descVersion="107"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://validation.gdn.giants-software.com/xml/fs25/modDesc.xsd">
+
     <author>Robert Drygas / ChatGPT</author>
-    <version>1.0.0.0</version>
+    <version>1.0.1.0</version>
 
     <title>
         <en>Loose Cargo</en>
@@ -21,11 +24,17 @@ Mod działa wyłącznie dla pojazdów kierowanych przez gracza.
         ]]></pl>
     </description>
 
-    <multiplayer supported="false" />
+    <multiplayer supported="false"/>
 
     <iconFilename>mod_icon.dds</iconFilename>
 
+    <specializations>
+        <specialization name="looseCargo"
+                        className="FS25LooseCargo"
+                        filename="scripts/LooseCargo.lua"/>
+    </specializations>
+
     <extraSourceFiles>
-        <sourceFile filename="scripts/LooseCargoRegister.lua" />
+        <sourceFile filename="scripts/LooseCargoRegister.lua"/>
     </extraSourceFiles>
 </modDesc>
