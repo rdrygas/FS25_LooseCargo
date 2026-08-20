@@ -1,6 +1,6 @@
 --[[
 FS25_LooseCargo
-Version 1.0.5.0
+Version 1.1.0.0
 
 Inject the specialization into all vehicle types containing FillUnit.
 Concrete vehicle filtering is performed in LooseCargo.lua by store category.
@@ -17,32 +17,17 @@ if not _G[guardName] then
 
     TypeManager.validateTypes = function(self, ...)
         if self.typeName == "vehicle" then
-            local vehicleTypes = g_vehicleTypeManager:getTypes()
-
             local activeCount = 0
 
-            for typeName, typeEntry in pairs(vehicleTypes) do
+            for typeName, typeEntry in pairs(g_vehicleTypeManager:getTypes()) do
                 local specializations = typeEntry.specializations
 
-                local hasFillUnit =
-                    SpecializationUtil.hasSpecialization(FillUnit, specializations)
-
-                if hasFillUnit then
-                    local hasLooseCargo =
-                        SpecializationUtil.hasSpecialization(
-                            FS25LooseCargo,
-                            specializations
-                        )
-
-                    if not hasLooseCargo then
+                if SpecializationUtil.hasSpecialization(FillUnit, specializations) then
+                    if not SpecializationUtil.hasSpecialization(FS25LooseCargo, specializations) then
                         g_vehicleTypeManager:addSpecialization(typeName, specName)
                     end
 
-                    -- Count the actual state after the attempted injection.
-                    if SpecializationUtil.hasSpecialization(
-                        FS25LooseCargo,
-                        typeEntry.specializations
-                    ) then
+                    if SpecializationUtil.hasSpecialization(FS25LooseCargo, typeEntry.specializations) then
                         activeCount = activeCount + 1
                     end
                 end
@@ -57,5 +42,4 @@ if not _G[guardName] then
 
         return originalValidateTypes(self, ...)
     end
-
 end
