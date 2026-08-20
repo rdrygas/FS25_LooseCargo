@@ -179,7 +179,7 @@ The mod monitors vehicles belonging to the following categories:
 
 - `TRAILERS` — trailers;
 - `TRAILERSSEMI` — semi-trailers;
-- `AUGERWAGONS` — transfer wagons.
+- `AUGERWAGONS` — auger wagons.
 
 During testing, the correct operation of standard trailers, semi-trailers and transhipment wagons was confirmed, including the correct handling of covers and vehicles driven by an AI operator.
 
