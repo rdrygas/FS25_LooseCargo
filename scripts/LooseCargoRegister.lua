@@ -1,13 +1,9 @@
 --[[
 FS25_LooseCargo
-Version 1.0.2.0
+Version 1.0.3.0
 
-The specialization is injected into every vehicle type containing FillUnit.
-The final scope (trailers / semi-trailers / auger wagons) is determined
-per concrete vehicle from its store category in LooseCargo.lua.
-
-This deliberately avoids relying on Trailer / Pipe specializations because
-those did not identify FS25's actual vehicle types reliably.
+Inject the specialization into all vehicle types containing FillUnit.
+Concrete vehicle filtering is performed in LooseCargo.lua by store category.
 ]]
 
 local modName = g_currentModName or "FS25_LooseCargo"
@@ -22,8 +18,10 @@ if not _G[guardName] then
     TypeManager.validateTypes = function(self, ...)
         if self.typeName == "vehicle" then
             local vehicleTypes = g_vehicleTypeManager:getTypes()
-            local addedCount = 0
+
             local fillUnitTypeCount = 0
+            local newlyAddedCount = 0
+            local activeCount = 0
 
             for typeName, typeEntry in pairs(vehicleTypes) do
                 local specializations = typeEntry.specializations
@@ -31,25 +29,37 @@ if not _G[guardName] then
                 local hasFillUnit =
                     SpecializationUtil.hasSpecialization(FillUnit, specializations)
 
-                local alreadyAdded =
-                    SpecializationUtil.hasSpecialization(FS25LooseCargo, specializations)
-
                 if hasFillUnit then
                     fillUnitTypeCount = fillUnitTypeCount + 1
 
-                    if not alreadyAdded then
+                    local hasLooseCargo =
+                        SpecializationUtil.hasSpecialization(
+                            FS25LooseCargo,
+                            specializations
+                        )
+
+                    if not hasLooseCargo then
                         if g_vehicleTypeManager:addSpecialization(typeName, specName) then
-                            addedCount = addedCount + 1
+                            newlyAddedCount = newlyAddedCount + 1
                         end
+                    end
+
+                    -- Count the actual state after the attempted injection.
+                    if SpecializationUtil.hasSpecialization(
+                        FS25LooseCargo,
+                        typeEntry.specializations
+                    ) then
+                        activeCount = activeCount + 1
                     end
                 end
             end
 
             Logging.info(
-                "[%s] Found %d vehicle types with FillUnit; added specialization to %d types.",
+                "[%s] FillUnit vehicle types: %d; newly added: %d; specialization active on: %d.",
                 modName,
                 fillUnitTypeCount,
-                addedCount
+                newlyAddedCount,
+                activeCount
             )
         end
 
