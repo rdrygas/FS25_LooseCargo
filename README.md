@@ -17,7 +17,7 @@ The mod has been designed according to the following principles:
 - the higher the speed, the greater the loss;
 - lighter materials are lost faster than heavier ones;
 - as the fill level decreases, losses decrease;
-- when the load level is 25 per cent or less, no further cargo is lost;
+- when the load level is 25% or less, no further cargo is lost;
 - this mod only applies to vehicles driven by the player;
 - AI crew members do not cause cargo loss; taking control of the vehicle restarts the mechanism;
 - no additional cargo loss is incurred during normal unloading.
