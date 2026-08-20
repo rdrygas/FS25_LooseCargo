@@ -50,8 +50,14 @@ function FS25LooseCargo.registerEventListeners(vehicleType)
     SpecializationUtil.registerEventListener(vehicleType, "onUpdateTick", FS25LooseCargo)
 end
 
+FS25LooseCargo.SPEC_NAME =
+    string.format("spec_%s.looseCargo", g_currentModName or "FS25_LooseCargo")
+
 function FS25LooseCargo:onLoad(savegame)
-    self.fs25LooseCargoTimer = 0
+    local spec = self[FS25LooseCargo.SPEC_NAME]
+    if spec ~= nil then
+        spec.timer = 0
+    end
 end
 
 -- Returns true if the cargo in this fill unit is exposed to the air.
@@ -170,14 +176,19 @@ function FS25LooseCargo:onUpdateTick(dt, isActiveForInput, isActiveForInputIgnor
         return
     end
 
-    self.fs25LooseCargoTimer = (self.fs25LooseCargoTimer or 0) + dt
-
-    if self.fs25LooseCargoTimer < FS25LooseCargo.UPDATE_INTERVAL_MS then
+    local modSpec = self[FS25LooseCargo.SPEC_NAME]
+    if modSpec == nil then
         return
     end
 
-    local elapsedMs = math.min(self.fs25LooseCargoTimer, 5000)
-    self.fs25LooseCargoTimer = 0
+    modSpec.timer = (modSpec.timer or 0) + dt
+
+    if modSpec.timer < FS25LooseCargo.UPDATE_INTERVAL_MS then
+        return
+    end
+
+    local elapsedMs = math.min(modSpec.timer, 5000)
+    modSpec.timer = 0
 
     local rootVehicle = self:getRootVehicle()
     if rootVehicle == nil then
