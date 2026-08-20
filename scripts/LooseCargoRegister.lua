@@ -1,65 +1,72 @@
 --[[
 FS25_LooseCargo
+Version 1.0.1.0
 
-Registers the LooseCargo specialization for vehicle types that behave like
-bulk trailers/tippers. This includes the standard trailer and auger-wagon
-family because auger wagons inherit the trailer/tipper specializations.
+Global specialization injector.
+
+Important:
+The specialization must be added BEFORE TypeManager:validateTypes()
+validates the vehicle types. This follows the same lifecycle pattern
+used by FS25_NoDriveByFill.
 ]]
 
-FS25LooseCargoRegister = {}
+local modName = g_currentModName or "FS25_LooseCargo"
+local specName = modName .. ".looseCargo"
+local guardName = modName .. "_looseCargoSpecInjected"
 
-FS25LooseCargoRegister.MOD_NAME = g_currentModName
-FS25LooseCargoRegister.MOD_DIR = g_currentModDirectory
-FS25LooseCargoRegister.SPEC_NAME = FS25LooseCargoRegister.MOD_NAME .. ".looseCargo"
+if not _G[guardName] then
+    _G[guardName] = true
 
-local specializationFilename = Utils.getFilename("scripts/LooseCargo.lua", FS25LooseCargoRegister.MOD_DIR)
+    local originalValidateTypes = TypeManager.validateTypes
 
-g_specializationManager:addSpecialization(
-    FS25LooseCargoRegister.SPEC_NAME,
-    "FS25LooseCargo",
-    specializationFilename,
-    nil
-)
+    TypeManager.validateTypes = function(self, ...)
+        if self.typeName == "vehicle" then
+            local vehicleTypes = g_vehicleTypeManager:getTypes()
+            local addedCount = 0
 
-function FS25LooseCargoRegister.injectSpecialization(typeManager)
-    if typeManager ~= g_vehicleTypeManager then
-        return
-    end
+            for typeName, typeEntry in pairs(vehicleTypes) do
+                local specializations = typeEntry.specializations
 
-    local addedCount = 0
+                local hasFillUnit =
+                    SpecializationUtil.hasSpecialization(FillUnit, specializations)
 
-    for typeName, typeEntry in pairs(typeManager:getTypes()) do
-        local specializations = typeEntry.specializations
+                local hasTrailer =
+                    SpecializationUtil.hasSpecialization(Trailer, specializations)
 
-        local hasFillUnit = SpecializationUtil.hasSpecialization(FillUnit, specializations)
-        local hasTrailer = SpecializationUtil.hasSpecialization(Trailer, specializations)
-        local hasPipe = SpecializationUtil.hasSpecialization(Pipe, specializations)
-        local hasAttachable = SpecializationUtil.hasSpecialization(Attachable, specializations)
+                local hasPipe =
+                    SpecializationUtil.hasSpecialization(Pipe, specializations)
 
-        -- Normal trailers/tippers are selected by Trailer.
-        -- Pipe + Attachable is a fallback for auger-wagon style implements
-        -- that may use a pipe but are not based on exactly the same trailer type.
-        local isCargoTrailerType = hasTrailer or (hasPipe and hasAttachable)
+                local hasAttachable =
+                    SpecializationUtil.hasSpecialization(Attachable, specializations)
 
-        if hasFillUnit and isCargoTrailerType then
-            if typeEntry.specializationsByName[FS25LooseCargoRegister.SPEC_NAME] == nil then
-                if typeManager:addSpecialization(typeName, FS25LooseCargoRegister.SPEC_NAME) then
-                    addedCount = addedCount + 1
+                local alreadyAdded =
+                    SpecializationUtil.hasSpecialization(FS25LooseCargo, specializations)
+
+                -- Standard trailers/tippers normally have Trailer.
+                -- Pipe + Attachable is an additional fallback for auger-wagon
+                -- style implements which may use a different vehicle type.
+                local isCargoTrailerType =
+                    hasTrailer or (hasPipe and hasAttachable)
+
+                if hasFillUnit
+                    and isCargoTrailerType
+                    and not alreadyAdded then
+
+                    if g_vehicleTypeManager:addSpecialization(typeName, specName) then
+                        addedCount = addedCount + 1
+                    end
                 end
             end
+
+            Logging.info(
+                "[%s] Added specialization to %d bulk-trailer vehicle types.",
+                modName,
+                addedCount
+            )
         end
+
+        return originalValidateTypes(self, ...)
     end
 
-    Logging.info(
-        "[FS25_LooseCargo] Added specialization to %d bulk-trailer vehicle types.",
-        addedCount
-    )
+    Logging.info("[%s] Specialization injector installed.", modName)
 end
-
--- Types have already been loaded when finalizeTypes() starts, but their
--- specialization event listeners have not yet been finalized. This is the
--- correct moment to inject our specialization.
-TypeManager.finalizeTypes = Utils.prependedFunction(
-    TypeManager.finalizeTypes,
-    FS25LooseCargoRegister.injectSpecialization
-)
