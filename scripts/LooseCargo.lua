@@ -1,6 +1,6 @@
 --[[
 FS25_LooseCargo
-Version 1.0.4.0
+Version 1.0.5.0
 
 High-speed bulk cargo loss for uncovered:
   - trailers
@@ -22,6 +22,10 @@ FS25LooseCargo.REFERENCE_SPEED_KMH = 50.0
 FS25LooseCargo.BASE_LOSS_PER_MINUTE = 0.01
 FS25LooseCargo.MAX_LOSS_PER_MINUTE = 0.12
 
+-- Below this fill level the material is assumed to sit too deep inside
+-- the body to be significantly exposed to airflow.
+FS25LooseCargo.MIN_EXPOSED_FILL_PERCENT = 0.25
+
 FS25LooseCargo.MIN_DENSITY_FACTOR = 0.50
 FS25LooseCargo.MAX_DENSITY_FACTOR = 2.50
 
@@ -39,10 +43,6 @@ FS25LooseCargo.SPEC_NAME =
     string.format("spec_%s.looseCargo", g_currentModName or "FS25_LooseCargo")
 
 
--- During testing, print each encountered cargo fillType only once.
--- This makes it easy to verify BULK membership and density without log spam.
-FS25LooseCargo.LOGGED_FILL_TYPES = {}
-
 -- -------------------------------------------------------------------------
 -- SPECIALIZATION
 -- -------------------------------------------------------------------------
@@ -56,13 +56,6 @@ function FS25LooseCargo.registerEventListeners(vehicleType)
     SpecializationUtil.registerEventListener(vehicleType, "onUpdateTick", FS25LooseCargo)
 end
 
-local function joinCategoryNames(categoryNames)
-    if categoryNames == nil or #categoryNames == 0 then
-        return "<none>"
-    end
-
-    return table.concat(categoryNames, ",")
-end
 
 function FS25LooseCargo:isEligibleCargoVehicle()
     local storeItem = nil
@@ -72,18 +65,18 @@ function FS25LooseCargo:isEligibleCargoVehicle()
     end
 
     if storeItem == nil then
-        return false, nil, nil
+        return false
     end
 
     local categoryNames = storeItem.categoryNames or {}
 
     for _, categoryName in ipairs(categoryNames) do
         if FS25LooseCargo.ALLOWED_CATEGORIES[string.upper(categoryName)] then
-            return true, storeItem, categoryNames
+            return true
         end
     end
 
-    return false, storeItem, categoryNames
+    return false
 end
 
 function FS25LooseCargo:onLoad(savegame)
@@ -93,27 +86,7 @@ function FS25LooseCargo:onLoad(savegame)
     end
 
     spec.timer = 0
-
-    local eligible, storeItem, categoryNames =
-        FS25LooseCargo.isEligibleCargoVehicle(self)
-
-    spec.isEligible = eligible
-
-    -- Useful diagnostic while the mod is being tested. It is printed once
-    -- for every loaded FillUnit vehicle, not every frame.
-    local vehicleName = "<unknown>"
-    if storeItem ~= nil and storeItem.name ~= nil then
-        vehicleName = storeItem.name
-    elseif self.getName ~= nil then
-        vehicleName = self:getName()
-    end
-
-    Logging.info(
-        "[FS25_LooseCargo] Vehicle='%s', categories='%s', eligible=%s",
-        tostring(vehicleName),
-        joinCategoryNames(categoryNames),
-        tostring(eligible)
-    )
+    spec.isEligible = FS25LooseCargo.isEligibleCargoVehicle(self)
 end
 
 -- -------------------------------------------------------------------------
@@ -174,38 +147,6 @@ function FS25LooseCargo.isLooseCargoFillType(fillTypeIndex)
     return isInBulkCategory or desc.isBulkType == true
 end
 
-function FS25LooseCargo.logFillTypeOnce(fillTypeIndex)
-    if fillTypeIndex == nil
-        or fillTypeIndex == FillType.UNKNOWN
-        or FS25LooseCargo.LOGGED_FILL_TYPES[fillTypeIndex] then
-        return
-    end
-
-    FS25LooseCargo.LOGGED_FILL_TYPES[fillTypeIndex] = true
-
-    local desc = g_fillTypeManager:getFillTypeByIndex(fillTypeIndex)
-    if desc == nil then
-        return
-    end
-
-    local name =
-        g_fillTypeManager:getFillTypeNameByIndex(fillTypeIndex)
-        or tostring(fillTypeIndex)
-
-    local inBulk =
-        g_fillTypeManager:getIsFillTypeInCategory(fillTypeIndex, "BULK")
-
-    Logging.info(
-        "[FS25_LooseCargo] Cargo='%s', BULK=%s, isBulkType=%s, isPalletType=%s, isBaleType=%s, massPerLiter=%.6f",
-        tostring(name),
-        tostring(inBulk),
-        tostring(desc.isBulkType == true),
-        tostring(desc.isPalletType == true),
-        tostring(desc.isBaleType == true),
-        tonumber(desc.massPerLiter) or 0
-    )
-end
-
 function FS25LooseCargo.getDensityFactor(fillTypeIndex)
     local desc = g_fillTypeManager:getFillTypeByIndex(fillTypeIndex)
 
@@ -233,6 +174,29 @@ function FS25LooseCargo.getDensityFactor(fillTypeIndex)
         FS25LooseCargo.MIN_DENSITY_FACTOR,
         math.min(FS25LooseCargo.MAX_DENSITY_FACTOR, factor)
     )
+end
+
+function FS25LooseCargo.getExposureFactor(vehicle, fillUnitIndex)
+    local fillPct = vehicle:getFillUnitFillLevelPercentage(fillUnitIndex)
+
+    if fillPct == nil then
+        return 1.0
+    end
+
+    if fillPct <= FS25LooseCargo.MIN_EXPOSED_FILL_PERCENT then
+        return 0.0
+    end
+
+    -- Linear ramp:
+    -- 25% full -> 0% exposure
+    -- 50% full -> 33% exposure
+    -- 75% full -> 67% exposure
+    -- 100% full -> 100% exposure
+    local range = 1.0 - FS25LooseCargo.MIN_EXPOSED_FILL_PERCENT
+    local factor =
+        (fillPct - FS25LooseCargo.MIN_EXPOSED_FILL_PERCENT) / range
+
+    return math.max(0.0, math.min(1.0, factor))
 end
 
 function FS25LooseCargo.getLossRatePerMinute(speedKmh, densityFactor)
@@ -342,8 +306,6 @@ function FS25LooseCargo:onUpdateTick(
             local fillTypeIndex =
                 self:getFillUnitFillType(fillUnitIndex)
 
-            FS25LooseCargo.logFillTypeOnce(fillTypeIndex)
-
             if FS25LooseCargo.isLooseCargoFillType(fillTypeIndex)
                 and FS25LooseCargo.isFillUnitExposed(
                     self,
@@ -353,11 +315,17 @@ function FS25LooseCargo:onUpdateTick(
                 local densityFactor =
                     FS25LooseCargo.getDensityFactor(fillTypeIndex)
 
+                local exposureFactor =
+                    FS25LooseCargo.getExposureFactor(
+                        self,
+                        fillUnitIndex
+                    )
+
                 local lossRatePerMinute =
                     FS25LooseCargo.getLossRatePerMinute(
                         speedKmh,
                         densityFactor
-                    )
+                    ) * exposureFactor
 
                 if lossRatePerMinute > 0 then
                     local lossLiters =
