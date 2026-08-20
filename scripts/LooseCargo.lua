@@ -1,6 +1,6 @@
 --[[
 FS25_LooseCargo
-Version 1.0.2.0
+Version 1.0.3.0
 
 High-speed bulk cargo loss for uncovered:
   - trailers
@@ -37,6 +37,11 @@ FS25LooseCargo.ALLOWED_CATEGORIES = {
 
 FS25LooseCargo.SPEC_NAME =
     string.format("spec_%s.looseCargo", g_currentModName or "FS25_LooseCargo")
+
+
+-- During testing, print each encountered cargo fillType only once.
+-- This makes it easy to verify BULK membership and density without log spam.
+FS25LooseCargo.LOGGED_FILL_TYPES = {}
 
 -- -------------------------------------------------------------------------
 -- SPECIALIZATION
@@ -146,7 +151,7 @@ end
 -- FILL TYPES / DENSITY
 -- -------------------------------------------------------------------------
 
-function FS25LooseCargo.isBulkFillType(fillTypeIndex)
+function FS25LooseCargo.isLooseCargoFillType(fillTypeIndex)
     if fillTypeIndex == nil or fillTypeIndex == FillType.UNKNOWN then
         return false
     end
@@ -156,9 +161,52 @@ function FS25LooseCargo.isBulkFillType(fillTypeIndex)
         return false
     end
 
-    return desc.isBulkType == true
-       and desc.isPalletType ~= true
-       and desc.isBaleType ~= true
+    -- Pallets and bales are not loose cargo even if a custom map/mod assigns
+    -- unusual category data to them.
+    if desc.isPalletType == true or desc.isBaleType == true then
+        return false
+    end
+
+    -- BULK is the actual fillType category used by fill units that accept
+    -- loose solid cargo. This is broader and more appropriate than the
+    -- FillTypeDesc.isBulkType flag, which is an independent XML property and
+    -- defaults to false.
+    local isInBulkCategory =
+        g_fillTypeManager:getIsFillTypeInCategory(fillTypeIndex, "BULK")
+
+    -- Keep isBulkType as a fallback for custom fillTypes that are explicitly
+    -- marked as bulk but were not assigned to the standard BULK category.
+    return isInBulkCategory or desc.isBulkType == true
+end
+
+function FS25LooseCargo.logFillTypeOnce(fillTypeIndex)
+    if fillTypeIndex == nil
+        or fillTypeIndex == FillType.UNKNOWN
+        or FS25LooseCargo.LOGGED_FILL_TYPES[fillTypeIndex] then
+        return
+    end
+
+    FS25LooseCargo.LOGGED_FILL_TYPES[fillTypeIndex] = true
+
+    local desc = g_fillTypeManager:getFillTypeByIndex(fillTypeIndex)
+    if desc == nil then
+        return
+    end
+
+    local name =
+        g_fillTypeManager:getFillTypeNameByIndex(fillTypeIndex)
+        or tostring(fillTypeIndex)
+
+    local inBulk =
+        g_fillTypeManager:getIsFillTypeInCategory(fillTypeIndex, "BULK")
+
+    Logging.info(
+        "[FS25_LooseCargo] Cargo='%s', BULK=%s, isBulkType=%s, massPerLiter=%.6f",
+        tostring(name),
+        tostring(inBulk),
+        tostring(desc.isBulkType == true),
+        tonumber(desc.massPerLiter) or 0
+    )
 end
 
 function FS25LooseCargo.getDensityFactor(fillTypeIndex)
@@ -297,7 +345,9 @@ function FS25LooseCargo:onUpdateTick(
             local fillTypeIndex =
                 self:getFillUnitFillType(fillUnitIndex)
 
-            if FS25LooseCargo.isBulkFillType(fillTypeIndex)
+            FS25LooseCargo.logFillTypeOnce(fillTypeIndex)
+
+            if FS25LooseCargo.isLooseCargoFillType(fillTypeIndex)
                 and FS25LooseCargo.isFillUnitExposed(
                     self,
                     fillUnitIndex
