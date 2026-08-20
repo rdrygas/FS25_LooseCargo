@@ -1,13 +1,13 @@
 --[[
 FS25_LooseCargo
-Version 1.0.1.0
+Version 1.0.2.0
 
-Global specialization injector.
+The specialization is injected into every vehicle type containing FillUnit.
+The final scope (trailers / semi-trailers / auger wagons) is determined
+per concrete vehicle from its store category in LooseCargo.lua.
 
-Important:
-The specialization must be added BEFORE TypeManager:validateTypes()
-validates the vehicle types. This follows the same lifecycle pattern
-used by FS25_NoDriveByFill.
+This deliberately avoids relying on Trailer / Pipe specializations because
+those did not identify FS25's actual vehicle types reliably.
 ]]
 
 local modName = g_currentModName or "FS25_LooseCargo"
@@ -23,6 +23,7 @@ if not _G[guardName] then
         if self.typeName == "vehicle" then
             local vehicleTypes = g_vehicleTypeManager:getTypes()
             local addedCount = 0
+            local fillUnitTypeCount = 0
 
             for typeName, typeEntry in pairs(vehicleTypes) do
                 local specializations = typeEntry.specializations
@@ -30,37 +31,24 @@ if not _G[guardName] then
                 local hasFillUnit =
                     SpecializationUtil.hasSpecialization(FillUnit, specializations)
 
-                local hasTrailer =
-                    SpecializationUtil.hasSpecialization(Trailer, specializations)
-
-                local hasPipe =
-                    SpecializationUtil.hasSpecialization(Pipe, specializations)
-
-                local hasAttachable =
-                    SpecializationUtil.hasSpecialization(Attachable, specializations)
-
                 local alreadyAdded =
                     SpecializationUtil.hasSpecialization(FS25LooseCargo, specializations)
 
-                -- Standard trailers/tippers normally have Trailer.
-                -- Pipe + Attachable is an additional fallback for auger-wagon
-                -- style implements which may use a different vehicle type.
-                local isCargoTrailerType =
-                    hasTrailer or (hasPipe and hasAttachable)
+                if hasFillUnit then
+                    fillUnitTypeCount = fillUnitTypeCount + 1
 
-                if hasFillUnit
-                    and isCargoTrailerType
-                    and not alreadyAdded then
-
-                    if g_vehicleTypeManager:addSpecialization(typeName, specName) then
-                        addedCount = addedCount + 1
+                    if not alreadyAdded then
+                        if g_vehicleTypeManager:addSpecialization(typeName, specName) then
+                            addedCount = addedCount + 1
+                        end
                     end
                 end
             end
 
             Logging.info(
-                "[%s] Added specialization to %d bulk-trailer vehicle types.",
+                "[%s] Found %d vehicle types with FillUnit; added specialization to %d types.",
                 modName,
+                fillUnitTypeCount,
                 addedCount
             )
         end
