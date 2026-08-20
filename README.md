@@ -10,17 +10,18 @@ The mod has been designed according to the following principles:
 
 - it works for the `TRAILERS`, `TRAILERSSEMI` and `AUGERWAGONS` categories;
 - it applies to bulk materials belonging to the `BULK` category and compatible custom `fillType`s marked as `isBulkType`;
-- it covers, amongst others, grain, root crops, wood chips, grass, hay, straw, chaff, silage, animal feed, seeds, solid fertiliser, lime, road salt, stones and manure;
+- it covers, amongst other things, grain, root crops, wood chips, grass, hay, straw, chaff, silage, animal feed, seeds, solid fertiliser, lime, road salt, stones and manure;
 - loss only occurs when travelling at a speed higher than the set threshold;
-- a closed cover completely prevents cargo loss, provided the box in question has a cover;
+- a closed cover completely prevents cargo loss, provided the body has a cover;
 - a vehicle without a cover is treated as permanently open;
 - the higher the speed, the greater the loss;
 - lighter materials are lost faster than heavier ones;
-- as the fill level decreases, losses decrease;
-- when the load level is 25% or less, no further cargo is lost;
-- this mod only applies to vehicles driven by the player;
-- AI crew members do not cause cargo loss; taking control of the vehicle restarts the mechanism;
-- no additional cargo loss is incurred during normal unloading.
+- as the load level decreases, losses decrease;
+- when the load level is 25% or less, no further material is lost;
+- the mod only applies to player-controlled vehicles;
+- AI crew members do not cause losses; taking control of the vehicle triggers the mechanism again;
+- no additional loss is incurred during normal unloading;
+- when cargo loss begins, the player receives a localised warning on the HUD.
 
 ## How it works
 
@@ -86,9 +87,30 @@ If a given `fillUnit` has a cover assigned to it, the mod checks its status. A c
 
 If the vehicle has no cover, the load is treated as uncovered.
 
+### HUD warning
+
+When the mod detects an actual loss of cargo, it displays a brief flashing warning:
+
+> **Warning! You’re driving too fast and losing your load!**
+
+In the English version:
+
+> **Warning! You are driving too fast and losing cargo!**
+
+The message is displayed only when cargo loss begins, not with every subsequent calculation. Once the loss has stopped — e.g. by slowing down, closing the hatch or the fill level dropping to 25% — the warning may reappear if cargo loss starts again.
+
+The text is located in the `l10n` section of the `modDesc.xml` file, making it easy to add further language versions.
+
+The display duration and the minimum interval between warnings can be changed in `LooseCargo.lua`:
+
+```lua
+FS25LooseCargo.WARNING_DURATION_MS = 3000
+FS25LooseCargo.WARNING_COOLDOWN_MS = 5000
+```
+
 ## Performance table
 
-The values below show the approximate loss of **the current load per minute** for a material with a density similar to that of wheat, with an uncovered and fully loaded trailer.
+The values below show the approximate loss of **current cargo per minute** for a material with a density similar to that of wheat, with the trailer uncovered and fully loaded.
 
 | Speed | Loss / min |
 |---:|---:|
@@ -105,7 +127,7 @@ A material density factor and an exposure factor, which depends on the fill leve
 
 Example for wheat at 50 km/h:
 
-| Fill level | Approximate loss / min |
+| Fill level | Approximate loss per minute |
 |---:|---:|
 | 25% | 0.00% |
 | 50% | 0.33% |
@@ -133,6 +155,8 @@ FS25LooseCargo.MIN_EXPOSED_FILL_PERCENT = 0.25
 FS25LooseCargo.MIN_DENSITY_FACTOR = 0.50
 FS25LooseCargo.MAX_DENSITY_FACTOR = 2.50
 FS25LooseCargo.UPDATE_INTERVAL_MS = 1000
+FS25LooseCargo.WARNING_DURATION_MS = 3000
+FS25LooseCargo.WARNING_COOLDOWN_MS = 5000
 ```
 
 Parameter meanings:
@@ -143,7 +167,9 @@ Parameter meanings:
 - `MAX_LOSS_PER_MINUTE` — the limit on the maximum rate of loss;
 - `MIN_EXPOSED_FILL_PERCENT` — the fill level below which no losses occur;
 - `MIN_DENSITY_FACTOR` / `MAX_DENSITY_FACTOR` — limits on the influence of material density;
-- `UPDATE_INTERVAL_MS` — the interval between loss calculations.
+- `UPDATE_INTERVAL_MS` — the interval between loss calculations;
+- `WARNING_DURATION_MS` — the duration for which a HUD warning is displayed;
+- `WARNING_COOLDOWN_MS` — the minimum interval between warnings from the same set of vehicles.
 
 Changing `BASE_LOSS_PER_MINUTE` from `0.01` to `0.02` will double the base loss rate. A value of `0.005` will halve it.
 
@@ -171,11 +197,18 @@ This mod is intended for single-player gameplay.
 
 ## Change log
 
+### 1.2.0.0
+
+- Added a localised HUD warning displayed when cargo loss begins;
+- Added Polish and English versions of the message in `modDesc.xml`;
+- The warning is not repeated during continuous cargo loss;
+- Added a configurable display time and a safeguard against duplicate messages for combinations with more than one trailer.
+
 ### 1.1.0.0
 
 - first stable version ready for general use;
 - code refactoring and removal of diagnostic entries from the log;
-- retention of verified handling of trailers, semi-trailers and transfer trailers;
+- retention of proven handling of trailers, semi-trailers and transfer trailers;
 - retention of the effects of speed, density, cover and fill level;
 - refinement of `modDesc.xml` and the documentation.
 
