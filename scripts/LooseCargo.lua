@@ -34,15 +34,18 @@ FS25LooseCargo.ALLOWED_CATEGORIES = {
 FS25LooseCargo.SPEC_NAME =
     string.format("spec_%s.looseCargo", g_currentModName or "FS25_LooseCargo")
 
+-- Determine if the vehicle has the prerequisites for the LooseCargo specialization.
 function FS25LooseCargo.prerequisitesPresent(specializations)
     return SpecializationUtil.hasSpecialization(FillUnit, specializations)
 end
 
+-- Register the LooseCargo specialization for vehicles that have FillUnit.
 function FS25LooseCargo.registerEventListeners(vehicleType)
     SpecializationUtil.registerEventListener(vehicleType, "onLoad", FS25LooseCargo)
     SpecializationUtil.registerEventListener(vehicleType, "onUpdateTick", FS25LooseCargo)
 end
 
+-- Determine if the vehicle is eligible for loose cargo loss based on its store category.
 function FS25LooseCargo:isEligibleCargoVehicle()
     if g_storeManager == nil or self.configFileName == nil then
         return false
@@ -62,6 +65,7 @@ function FS25LooseCargo:isEligibleCargoVehicle()
     return false
 end
 
+-- Initialize the specialization.
 function FS25LooseCargo:onLoad(savegame)
     local spec = self[FS25LooseCargo.SPEC_NAME]
     if spec == nil then
@@ -73,6 +77,7 @@ function FS25LooseCargo:onLoad(savegame)
     spec.wasLosingCargo = false
 end
 
+-- Determine if the fill unit is exposed to the environment based on cover state.
 function FS25LooseCargo.isFillUnitExposed(vehicle, fillUnitIndex)
     local coverSpec = vehicle.spec_cover
 
@@ -97,6 +102,7 @@ function FS25LooseCargo.isFillUnitExposed(vehicle, fillUnitIndex)
     return false
 end
 
+-- Determine if the fill type is considered "loose cargo" based on its category or properties.
 function FS25LooseCargo.isLooseCargoFillType(fillTypeIndex)
     if fillTypeIndex == nil or fillTypeIndex == FillType.UNKNOWN then
         return false
@@ -111,6 +117,7 @@ function FS25LooseCargo.isLooseCargoFillType(fillTypeIndex)
         or desc.isBulkType == true
 end
 
+-- Calculate the density factor based on the fill type's mass per liter relative to wheat.
 function FS25LooseCargo.getDensityFactor(fillTypeIndex)
     local desc = g_fillTypeManager:getFillTypeByIndex(fillTypeIndex)
 
@@ -139,6 +146,7 @@ function FS25LooseCargo.getDensityFactor(fillTypeIndex)
     )
 end
 
+-- Calculate the exposure factor based on the fill level percentage of the fill unit.
 function FS25LooseCargo.getExposureFactor(vehicle, fillUnitIndex)
     local fillPct = vehicle:getFillUnitFillLevelPercentage(fillUnitIndex)
 
@@ -157,6 +165,7 @@ function FS25LooseCargo.getExposureFactor(vehicle, fillUnitIndex)
     return math.max(0.0, math.min(1.0, factor))
 end
 
+-- Calculate the loss rate per minute based on speed and density factor.
 function FS25LooseCargo.getLossRatePerMinute(speedKmh, densityFactor)
     if speedKmh <= FS25LooseCargo.MIN_SPEED_KMH then
         return 0
@@ -181,6 +190,7 @@ function FS25LooseCargo.getLossRatePerMinute(speedKmh, densityFactor)
     return math.min(FS25LooseCargo.MAX_LOSS_PER_MINUTE, lossRate)
 end
 
+-- Show a warning to the player when cargo is being lost.
 function FS25LooseCargo.showCargoLossWarning(rootVehicle)
     if g_currentMission == nil
         or g_currentMission.showBlinkingWarning == nil
@@ -204,6 +214,7 @@ function FS25LooseCargo.showCargoLossWarning(rootVehicle)
     )
 end
 
+-- Update function for the LooseCargo specialization.
 function FS25LooseCargo:onUpdateTick(
     dt,
     isActiveForInput,
@@ -231,11 +242,13 @@ function FS25LooseCargo:onUpdateTick(
         return
     end
 
+    -- Only process if the vehicle is controlled by the player and not AI.
     if rootVehicle.getIsControlled == nil or not rootVehicle:getIsControlled() then
         spec.wasLosingCargo = false
         return
     end
 
+    -- Skip processing if the vehicle is AI-controlled.
     if rootVehicle.getIsAIActive ~= nil and rootVehicle:getIsAIActive() then
         spec.wasLosingCargo = false
         return
@@ -243,12 +256,14 @@ function FS25LooseCargo:onUpdateTick(
 
     local speedKmh = nil
 
+    -- Determine the vehicle's speed in km/h using available methods.
     if rootVehicle.getLastSpeed ~= nil then
         speedKmh = rootVehicle:getLastSpeed()
     elseif self.getLastSpeed ~= nil then
         speedKmh = self:getLastSpeed()
     end
 
+    -- Skip processing if the speed is not available.
     if speedKmh == nil then
         spec.wasLosingCargo = false
         return
@@ -256,11 +271,13 @@ function FS25LooseCargo:onUpdateTick(
 
     speedKmh = math.abs(speedKmh)
 
+    -- Skip processing if the vehicle is moving below the minimum speed threshold.
     if speedKmh <= FS25LooseCargo.MIN_SPEED_KMH then
         spec.wasLosingCargo = false
         return
     end
 
+    -- Skip processing if the vehicle is currently discharging.
     if self.getDischargeState ~= nil
         and Dischargeable ~= nil
         and self:getDischargeState() ~= Dischargeable.DISCHARGE_STATE_OFF then
@@ -276,6 +293,7 @@ function FS25LooseCargo:onUpdateTick(
 
     local isLosingCargo = false
 
+    -- Iterate over all fill units and calculate cargo loss for eligible loose cargo fill types.
     for fillUnitIndex, _ in ipairs(fillUnits) do
         local fillLevel = self:getFillUnitFillLevel(fillUnitIndex)
 
@@ -321,6 +339,7 @@ function FS25LooseCargo:onUpdateTick(
         end
     end
 
+    -- Show a warning if cargo is being lost and it wasn't losing cargo in the previous update.
     if isLosingCargo and not spec.wasLosingCargo then
         FS25LooseCargo.showCargoLossWarning(rootVehicle)
     end
