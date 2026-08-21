@@ -47,15 +47,19 @@ end
 
 -- Determine if the vehicle is eligible for loose cargo loss based on its store category.
 function FS25LooseCargo:isEligibleCargoVehicle()
+    -- Skip processing if the store manager or config file name is not available.
     if g_storeManager == nil or self.configFileName == nil then
         return false
     end
 
     local storeItem = g_storeManager:getItemByXMLFilename(self.configFileName)
+
+    -- Skip processing if the store item is not found, indicating the vehicle is not registered in the store.
     if storeItem == nil then
         return false
     end
 
+    -- Iterate over the store item's category names and check if any of them are in the allowed categories for loose cargo.
     for _, categoryName in ipairs(storeItem.categoryNames or {}) do
         if FS25LooseCargo.ALLOWED_CATEGORIES[string.upper(categoryName)] then
             return true
@@ -68,6 +72,7 @@ end
 -- Initialize the specialization.
 function FS25LooseCargo:onLoad(savegame)
     local spec = self[FS25LooseCargo.SPEC_NAME]
+    -- Skip initialization if the specialization is not present.
     if spec == nil then
         return
     end
@@ -81,6 +86,7 @@ end
 function FS25LooseCargo.isFillUnitExposed(vehicle, fillUnitIndex)
     local coverSpec = vehicle.spec_cover
 
+    -- Skip processing if the cover specialization is not present or if the fill unit has no covers.
     if coverSpec == nil or not coverSpec.hasCovers then
         return true
     end
@@ -89,10 +95,12 @@ function FS25LooseCargo.isFillUnitExposed(vehicle, fillUnitIndex)
         coverSpec.fillUnitIndexToCovers
         and coverSpec.fillUnitIndexToCovers[fillUnitIndex]
 
+    -- Return true if there are no covers associated with the fill unit, indicating it is exposed.
     if fillUnitCovers == nil or #fillUnitCovers == 0 then
         return true
     end
 
+    -- Check if any of the covers are in the closed state; if so, the fill unit is not exposed.
     for _, cover in ipairs(fillUnitCovers) do
         if coverSpec.state == cover.index then
             return true
@@ -104,15 +112,19 @@ end
 
 -- Determine if the fill type is considered "loose cargo" based on its category or properties.
 function FS25LooseCargo.isLooseCargoFillType(fillTypeIndex)
+    -- Skip processing if the fill type index is invalid or unknown.
     if fillTypeIndex == nil or fillTypeIndex == FillType.UNKNOWN then
         return false
     end
 
     local desc = g_fillTypeManager:getFillTypeByIndex(fillTypeIndex)
+
+    -- Return false if the fill type description is invalid.
     if desc == nil then
         return false
     end
 
+    -- Determine if the fill type is in the "BULK" category or explicitly marked as a bulk type.
     return g_fillTypeManager:getIsFillTypeInCategory(fillTypeIndex, "BULK")
         or desc.isBulkType == true
 end
@@ -121,6 +133,7 @@ end
 function FS25LooseCargo.getDensityFactor(fillTypeIndex)
     local desc = g_fillTypeManager:getFillTypeByIndex(fillTypeIndex)
 
+    -- Return a default factor of 1.0 if the fill type description is invalid or has no mass per liter.
     if desc == nil or desc.massPerLiter == nil or desc.massPerLiter <= 0 then
         return 1.0
     end
@@ -128,10 +141,12 @@ function FS25LooseCargo.getDensityFactor(fillTypeIndex)
     local referenceMass = desc.massPerLiter
     local wheatDesc = nil
 
+    -- Attempt to retrieve the fill type description for wheat if it exists.
     if FillType.WHEAT ~= nil then
         wheatDesc = g_fillTypeManager:getFillTypeByIndex(FillType.WHEAT)
     end
 
+    -- Use wheat's mass per liter as the reference if available and valid.
     if wheatDesc ~= nil
         and wheatDesc.massPerLiter ~= nil
         and wheatDesc.massPerLiter > 0 then
@@ -140,6 +155,7 @@ function FS25LooseCargo.getDensityFactor(fillTypeIndex)
 
     local factor = math.sqrt(referenceMass / desc.massPerLiter)
 
+    -- Cap the density factor between the defined minimum and maximum values to ensure valid results.
     return math.max(
         FS25LooseCargo.MIN_DENSITY_FACTOR,
         math.min(FS25LooseCargo.MAX_DENSITY_FACTOR, factor)
@@ -150,10 +166,12 @@ end
 function FS25LooseCargo.getExposureFactor(vehicle, fillUnitIndex)
     local fillPct = vehicle:getFillUnitFillLevelPercentage(fillUnitIndex)
 
+    -- Return full exposure if the fill percentage is nil (unknown).
     if fillPct == nil then
         return 1.0
     end
 
+    -- Return no exposure if the fill percentage is below the minimum threshold.
     if fillPct <= FS25LooseCargo.MIN_EXPOSED_FILL_PERCENT then
         return 0.0
     end
@@ -162,11 +180,13 @@ function FS25LooseCargo.getExposureFactor(vehicle, fillUnitIndex)
     local factor =
         (fillPct - FS25LooseCargo.MIN_EXPOSED_FILL_PERCENT) / range
 
+    -- Cap the exposure factor between 0.0 and 1.0 to ensure valid values.
     return math.max(0.0, math.min(1.0, factor))
 end
 
 -- Calculate the loss rate per minute based on speed and density factor.
 function FS25LooseCargo.getLossRatePerMinute(speedKmh, densityFactor)
+    -- Skip processing if the speed is below the minimum threshold.
     if speedKmh <= FS25LooseCargo.MIN_SPEED_KMH then
         return 0
     end
@@ -175,6 +195,7 @@ function FS25LooseCargo.getLossRatePerMinute(speedKmh, densityFactor)
         FS25LooseCargo.REFERENCE_SPEED_KMH
         - FS25LooseCargo.MIN_SPEED_KMH
 
+    -- Skip processing if the speed range is invalid.
     if speedRange <= 0 then
         return 0
     end
@@ -187,11 +208,13 @@ function FS25LooseCargo.getLossRatePerMinute(speedKmh, densityFactor)
         * speedFactor * speedFactor
         * densityFactor
 
+    -- Cap the loss rate to the maximum allowed value.
     return math.min(FS25LooseCargo.MAX_LOSS_PER_MINUTE, lossRate)
 end
 
 -- Show a warning to the player when cargo is being lost.
 function FS25LooseCargo.showCargoLossWarning(rootVehicle)
+    --  Skip showing the warning if the current mission or required functions are not available.
     if g_currentMission == nil
         or g_currentMission.showBlinkingWarning == nil
         or g_i18n == nil then
@@ -201,6 +224,7 @@ function FS25LooseCargo.showCargoLossWarning(rootVehicle)
     local currentTime = g_currentMission.time or 0
     local lastWarningTime = rootVehicle.fs25LooseCargoLastWarningTime
 
+    -- Skip showing the warning if the cooldown period has not elapsed since the last warning.
     if lastWarningTime ~= nil
         and currentTime - lastWarningTime < FS25LooseCargo.WARNING_COOLDOWN_MS then
         return
@@ -208,6 +232,7 @@ function FS25LooseCargo.showCargoLossWarning(rootVehicle)
 
     rootVehicle.fs25LooseCargoLastWarningTime = currentTime
 
+    -- Show the blinking warning message to the player.
     g_currentMission:showBlinkingWarning(
         g_i18n:getText("FS25_LooseCargo_warningCargoLoss"),
         FS25LooseCargo.WARNING_DURATION_MS
@@ -223,12 +248,14 @@ function FS25LooseCargo:onUpdateTick(
 )
     local spec = self[FS25LooseCargo.SPEC_NAME]
 
+    -- Skip processing if the specialization is not initialized, not eligible, or if this is not the server.
     if spec == nil or not spec.isEligible or not self.isServer then
         return
     end
 
     spec.timer = (spec.timer or 0) + dt
 
+    -- Skip processing if the update interval has not been reached.
     if spec.timer < FS25LooseCargo.UPDATE_INTERVAL_MS then
         return
     end
@@ -237,6 +264,8 @@ function FS25LooseCargo:onUpdateTick(
     spec.timer = 0
 
     local rootVehicle = self:getRootVehicle()
+
+    -- Skip processing if the root vehicle is not available.
     if rootVehicle == nil then
         spec.wasLosingCargo = false
         return
@@ -286,6 +315,8 @@ function FS25LooseCargo:onUpdateTick(
     end
 
     local fillUnits = self:getFillUnits()
+
+    -- Skip processing if there are no fill units available.
     if fillUnits == nil then
         spec.wasLosingCargo = false
         return
@@ -297,9 +328,11 @@ function FS25LooseCargo:onUpdateTick(
     for fillUnitIndex, _ in ipairs(fillUnits) do
         local fillLevel = self:getFillUnitFillLevel(fillUnitIndex)
 
+        -- Skip processing if the fill level is negligible.
         if fillLevel ~= nil and fillLevel > 0.01 then
             local fillTypeIndex = self:getFillUnitFillType(fillUnitIndex)
 
+            -- Skip processing if the fill type is not considered loose cargo or if the fill unit is not exposed.
             if FS25LooseCargo.isLooseCargoFillType(fillTypeIndex)
                 and FS25LooseCargo.isFillUnitExposed(self, fillUnitIndex) then
                 local densityFactor =
@@ -314,6 +347,7 @@ function FS25LooseCargo:onUpdateTick(
                         densityFactor
                     ) * exposureFactor
 
+                -- Skip processing if the loss rate is negligible.
                 if lossRatePerMinute > 0 then
                     local lossLiters =
                         fillLevel
@@ -322,6 +356,7 @@ function FS25LooseCargo:onUpdateTick(
 
                     lossLiters = math.min(lossLiters, fillLevel)
 
+                    -- Apply the calculated cargo loss to the fill unit and mark that cargo is being lost.
                     if lossLiters > 0.001 then
                         self:addFillUnitFillLevel(
                             self:getOwnerFarmId(),
